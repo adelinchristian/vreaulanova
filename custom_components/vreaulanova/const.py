@@ -2,7 +2,9 @@
 
 from homeassistant.const import Platform
 
-DOMAIN = "vreaulanova"
+BASE_DOMAIN = "vreaulanova"
+USE_LICENSE = False
+DOMAIN = f"{BASE_DOMAIN}_nolicense" if not USE_LICENSE else BASE_DOMAIN
 
 # ──────────────────────────────────────────────
 # Configurare

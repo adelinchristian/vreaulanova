@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import DOMAIN, USE_LICENSE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,6 +98,7 @@ class LicenseManager:
     def __init__(self, hass: HomeAssistant) -> None:
         """Inițializează managerul de licențe."""
         self._hass = hass
+        self._license_bypassed = not USE_LICENSE
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._data: dict[str, Any] = {}
         self._fingerprint: str = ""
@@ -141,6 +142,22 @@ class LicenseManager:
     async def async_load(self) -> None:
         """Încarcă datele de licență din storage. Se apelează o singură dată."""
         _LOGGER.debug("[Nova:License] Încep async_load()")
+        if self._license_bypassed:
+            self._data.setdefault("license_key", "USE_LICENSE_FALSE")
+            self._status_token = {
+                "status": "licensed",
+                "valid_until": time.time() + 365 * 24 * 3600,
+                "license_type": "bypass",
+                "trial_days_remaining": 0,
+            }
+            self._data["status_token"] = self._status_token
+            self._loaded = True
+            _LOGGER.warning(
+                "[Nova:License] USE_LICENSE=false — bypass licență activ. Domeniu: %s",
+                DOMAIN,
+            )
+            return
+
         try:
             stored = await self._store.async_load()
             self._data = dict(stored) if stored else {}
@@ -348,6 +365,16 @@ class LicenseManager:
         Dacă există un token cached valid (valid_until > now), îl folosește.
         Altfel, face request la server.
         """
+        if self._license_bypassed:
+            self._status_token = {
+                "status": "licensed",
+                "valid_until": time.time() + 365 * 24 * 3600,
+                "license_type": "bypass",
+                "trial_days_remaining": 0,
+            }
+            self._data["status_token"] = self._status_token
+            return self._status_token
+
         # Verifică cache-ul local
         if self._is_status_cache_valid():
             _LOGGER.debug(
@@ -585,6 +612,8 @@ class LicenseManager:
     @property
     def is_trial_valid(self) -> bool:
         """Verifică dacă perioada de evaluare e activă (conform server)."""
+        if self._license_bypassed:
+            return False
         return (
             self._status_token.get("status") == "trial"
             and (self._is_status_cache_valid() or self._is_within_grace_period())
@@ -604,6 +633,9 @@ class LicenseManager:
         Verifică ATÂT token-ul de activare (Ed25519) CÂT ȘI
         faptul că serverul confirmă statusul 'licensed'.
         """
+        if self._license_bypassed:
+            return True
+
         token = self._data.get("activation_token")
         if not token or not isinstance(token, dict):
             return False
@@ -668,6 +700,9 @@ class LicenseManager:
         2. Perioadă de grație activă (server inaccesibil, dar status era ok) → True
         3. Fallback local: token Ed25519 valid + trial valid → True/False
         """
+        if self._license_bypassed:
+            return True
+
         # 1. Serverul e sursa de adevăr (cache valid)
         if self._status_token and self._is_status_cache_valid():
             server_status = self._status_token.get("status")
@@ -742,6 +777,9 @@ class LicenseManager:
         Când cache-ul e expirat dar suntem în perioadă de grație,
         returnează ultimul status cunoscut (nu 'expired').
         """
+        if self._license_bypassed:
+            return "licensed"
+
         # Dacă avem status valid de la server, îl folosim
         if self._status_token and self._is_status_cache_valid():
             server_status = self._status_token.get("status", "unlicensed")
@@ -767,6 +805,8 @@ class LicenseManager:
         Intervalul e controlat de server via `valid_until`.
         Nu mai există constantă locală LICENSE_CHECK_INTERVAL_SEC.
         """
+        if self._license_bypassed:
+            return False
         return not self._is_status_cache_valid()
 
     @property
@@ -783,6 +823,8 @@ class LicenseManager:
         - Încercări 13+: 3600s (1 oră)
         Previne bombardarea unui server indisponibil.
         """
+        if self._license_bypassed:
+            return 24 * 3600
         if not self._status_token:
             return 4 * 3600  # 4 ore implicit (conservative)
 
@@ -811,6 +853,16 @@ class LicenseManager:
         În v2, heartbeat = async_check_status() + validate (dacă licențiat).
         Returnează True dacă validarea a reușit.
         """
+        if self._license_bypassed:
+            self._status_token = {
+                "status": "licensed",
+                "valid_until": time.time() + 365 * 24 * 3600,
+                "license_type": "bypass",
+                "trial_days_remaining": 0,
+            }
+            self._data["status_token"] = self._status_token
+            return True
+
         # 1. Verifică statusul general
         await self.async_check_status()
 
@@ -877,6 +929,23 @@ class LicenseManager:
 
         Returnează: {"success": True} sau {"success": False, "error": "..."}
         """
+        if self._license_bypassed:
+            self._data["license_key"] = (license_key or "USE_LICENSE_FALSE").strip().upper()
+            self._data["activation_token"] = {
+                "license_type": "bypass",
+                "fingerprint": self._fingerprint,
+                "expires_at": None,
+                "activated_at": time.time(),
+            }
+            self._data["status_token"] = {
+                "status": "licensed",
+                "valid_until": time.time() + 365 * 24 * 3600,
+                "license_type": "bypass",
+                "trial_days_remaining": 0,
+            }
+            await self._async_save()
+            return {"success": True}
+
         timestamp = int(time.time())
 
         payload = {
