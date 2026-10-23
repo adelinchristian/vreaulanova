@@ -27,7 +27,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
 from .api import NovaApiError
-from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY
+from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY, USE_LICENSE
 from .coordinator import NovaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ async def async_setup_entry(
 
     # Verificare licență — fără licență, fără butoane
     mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
-    if not mgr or not mgr.is_valid:
+    if USE_LICENSE and (not mgr or not mgr.is_valid):
         _LOGGER.debug("[Nova:Button] Licență invalidă — nu se creează butoane")
         # Butoanele create anterior ar rămâne orfane („indisponibile") în registry
         registru = er.async_get(hass)
@@ -179,6 +179,8 @@ class NovaBaseButton(CoordinatorEntity[NovaCoordinator], ButtonEntity):
     @property
     def _license_valid(self) -> bool:
         """Verifică dacă licența este validă (real-time)."""
+        if not USE_LICENSE:
+            return True
         mgr = self._coordinator.hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
         return mgr.is_valid if mgr else False
 

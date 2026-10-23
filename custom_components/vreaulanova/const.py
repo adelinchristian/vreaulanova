@@ -1,5 +1,7 @@
 """Constante pentru integrarea Nova Power & Gas (Vreau la Nova)."""
 
+import os
+
 from homeassistant.const import Platform
 
 DOMAIN = "vreaulanova"
@@ -16,6 +18,14 @@ HEAVY_UPDATE_MULTIPLIER = 6         # Heavy refresh la fiecare al 6-lea ciclu (�
 CONF_LICENSE_KEY = "license_key"
 LICENSE_DATA_KEY = "vreaulanova_license_manager"
 LICENSE_PURCHASE_URL = "https://hubinteligent.org/donate?ref=vreaulanova"
+
+USE_LICENSE: bool = str(os.environ.get("USE_LICENSE", "false")).strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+    "disabled",
+}
 
 # ──────────────────────────────────────────────
 # Token store (între config_flow și __init__)

@@ -48,7 +48,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
-from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY, MONTHS_RO
+from .const import ATTRIBUTION, DOMAIN, LICENSE_DATA_KEY, MONTHS_RO, USE_LICENSE
 from .coordinator import NovaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,6 +60,8 @@ _LOGGER = logging.getLogger(__name__)
 
 def _is_license_valid(hass: HomeAssistant) -> bool:
     """Verifică dacă licența este validă (real-time)."""
+    if not USE_LICENSE:
+        return True
     mgr = hass.data.get(DOMAIN, {}).get(LICENSE_DATA_KEY)
     if mgr is None:
         return False
